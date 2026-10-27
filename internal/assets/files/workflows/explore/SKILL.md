@@ -13,8 +13,8 @@ description: Explore mode — think an idea, problem or requirement through with
 
 Before theorising, find out what the project already knows and decided:
 
-- `lore ctx "<the topic in a sentence>"` — the decisions model picks the relevant requirements and ADRs (needs the API key; without it skip to the next lines);
-- `lore/INDEX.md` → `lore show <zone>` for each zone the topic touches — behaviour, contracts, active decisions;
+- `lore ctx "<the topic in a sentence, in your own words>"` — the decisions model picks the ADRs that relate to it and prints the related zones whole;
+- a zone it didn't print, or no API key: `lore/INDEX.md` → `lore show <zone>` — behaviour, contracts, active decisions;
 - `lore/product.md` — is it an existing `[live]` / `[planned]` scenario? `lore/ideas.md`, if the project has one;
 - `lore change list` — is there already a change about this? If yes, read its `proposal.md` and deltas: exploration may refine it.
 

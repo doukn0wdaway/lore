@@ -9,7 +9,7 @@ Nothing is coded in this workflow. It ends with an approved change ready for `/l
 
 ## 1. Understand
 
-Ask until you can state in two lines what changes for the user and why. Read `lore/product.md` (is it a `[planned]` scenario?) and `lore/INDEX.md`; open the touched zones with `lore show <zone>` — it also prints their active decisions.
+Ask until you can state in two lines what changes for the user and why. Read `lore/product.md` (is it a `[planned]` scenario?). Then `lore ctx "<what changes and why, in your own words>"` — the accepted ADRs that apply and the related zones, whole; design within those ADRs. A zone it didn't print, or no API key (then pick the zones from `lore/INDEX.md`): `lore show <zone>` — it also prints the zone's active decisions.
 
 ## 2. Create the change
 

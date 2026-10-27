@@ -22,10 +22,9 @@ import (
 // block only mentions what exists.
 type Features struct {
 	Changes bool // stage 2: lore change ...
-	Hook    bool // stage 3: prompt hook
 }
 
-var Current = Features{Changes: true, Hook: true}
+var Current = Features{Changes: true}
 
 // Log collects human-readable lines about what install steps did.
 type Log struct{ w io.Writer }
@@ -88,6 +87,10 @@ func (p *Project) Upgrade(out io.Writer, force bool) error {
 	log := Log{out}
 	if err := p.upgradeConfig(log); err != nil {
 		return err
+	}
+	if line := p.OldHookLine(); line > 0 {
+		// the block is kept byte for byte, like every existing line (ADR 2026-10-27-upgrade-merges-config-as-text)
+		log.f("hint     %s:%d: %s", ConfigFile, line, oldHookMsg)
 	}
 	if err := p.syncManaged(log, force); err != nil {
 		return err
@@ -286,7 +289,7 @@ func (p *Project) renderAgentsBlock() (string, error) {
 	}
 	var buf bytes.Buffer
 	err = tmpl.Execute(&buf, map[string]any{
-		"Root": p.Cfg.Root, "Hook": Current.Hook, "Changes": Current.Changes,
+		"Root": p.Cfg.Root, "Changes": Current.Changes,
 		"Workflows": strings.Join(wf, ", "),
 	})
 	return blockBegin + "\n" + strings.TrimRight(buf.String(), "\n") + "\n" + blockEnd + "\n", err
@@ -351,10 +354,11 @@ func ensureLine(path, line string, log Log, p *Project) error {
 
 // --- .claude/settings.json ---
 
-// mergeClaudeSettings lets the agent run lore freely and makes edits of the
-// "law" (zones, ADRs, product, architecture) ask the owner. Existing settings
-// are kept; only missing rules are added. Paths starting with "/" are
-// relative to the project root; Edit rules cover Write too.
+// mergeClaudeSettings lets the agent run lore freely and makes edits of ADRs
+// ask the owner; zones, product and architecture are approved at the gate.
+// Existing settings are kept; only missing rules are added, and lore's own
+// older entries are removed. Paths starting with "/" are relative to the
+// project root; Edit rules cover Write too.
 func (p *Project) mergeClaudeSettings(log Log) error {
 	path := filepath.Join(p.Root, ".claude", "settings.json")
 	settings := map[string]any{}
@@ -371,18 +375,16 @@ func (p *Project) mergeClaudeSettings(log Log) error {
 	}
 	root := "/" + filepath.ToSlash(p.Cfg.Root)
 	added := addRules(perms, "allow", "Bash(lore:*)")
-	// ADR 2026-10-27-read-freely-edit-asks: ask, never deny.
-	added += addRules(perms, "ask",
+	// ADR 2026-10-27-edits-ask-only-for-adrs: ask only for ADRs, never deny.
+	added += addRules(perms, "ask", "Edit("+root+"/adr/**)")
+	removed := removeRules(perms, "ask",
 		"Edit("+root+"/zones/**)",
-		"Edit("+root+"/adr/**)",
 		"Edit("+root+"/product.md)",
 		"Edit("+root+"/architecture.md)",
 	)
 	settings["permissions"] = perms
-	if Current.Hook && addPromptHook(settings) {
-		added++
-	}
-	if added == 0 {
+	hookRemoved := removeOldHook(settings)
+	if added == 0 && removed == 0 && !hookRemoved {
 		return nil
 	}
 	b, err := json.MarshalIndent(settings, "", "  ")
@@ -392,32 +394,62 @@ func (p *Project) mergeClaudeSettings(log Log) error {
 	if err := writeFile(path, append(b, '\n')); err != nil {
 		return err
 	}
-	log.f("updated  %s (%d permission rules)", p.Rel(path), added)
+	msg := fmt.Sprintf("%d permission rules added", added)
+	if removed > 0 {
+		msg += fmt.Sprintf(", %d old ask rules removed", removed)
+	}
+	if hookRemoved {
+		msg += ", old prompt hook removed"
+	}
+	log.f("updated  %s (%s)", p.Rel(path), msg)
 	return nil
 }
 
-const hookCommand = "lore ctx --hook"
+// oldHookCommand is the UserPromptSubmit hook older versions registered.
+const oldHookCommand = "lore ctx --hook"
 
-// addPromptHook registers `lore ctx --hook` on UserPromptSubmit unless present.
-func addPromptHook(settings map[string]any) bool {
+// removeOldHook drops lore's own old prompt hook from the settings, and the
+// UserPromptSubmit entries and hooks map it leaves empty; other hooks stay.
+// ADR 2026-10-27-agent-pulls-knowledge-with-ctx: no prompt hook.
+func removeOldHook(settings map[string]any) bool {
 	hooks, _ := settings["hooks"].(map[string]any)
-	if hooks == nil {
-		hooks = map[string]any{}
-	}
 	groups, _ := hooks["UserPromptSubmit"].([]any)
+	removed := false
+	var keep []any
 	for _, g := range groups {
-		gm, _ := g.(map[string]any)
+		gm, ok := g.(map[string]any)
 		list, _ := gm["hooks"].([]any)
-		for _, h := range list {
-			if hm, _ := h.(map[string]any); hm != nil && hm["command"] == hookCommand {
-				return false
-			}
+		if !ok || list == nil {
+			keep = append(keep, g)
+			continue
 		}
+		var rest []any
+		for _, h := range list {
+			if hm, _ := h.(map[string]any); hm != nil && hm["command"] == oldHookCommand {
+				continue
+			}
+			rest = append(rest, h)
+		}
+		if len(rest) < len(list) {
+			removed = true
+			if len(rest) == 0 {
+				continue
+			}
+			gm["hooks"] = rest
+		}
+		keep = append(keep, gm)
 	}
-	hooks["UserPromptSubmit"] = append(groups, map[string]any{
-		"hooks": []any{map[string]any{"type": "command", "command": hookCommand, "timeout": 10}},
-	})
-	settings["hooks"] = hooks
+	if !removed {
+		return false
+	}
+	if len(keep) == 0 {
+		delete(hooks, "UserPromptSubmit")
+	} else {
+		hooks["UserPromptSubmit"] = keep
+	}
+	if len(hooks) == 0 {
+		delete(settings, "hooks")
+	}
 	return true
 }
 
@@ -437,6 +469,28 @@ func addRules(perms map[string]any, key string, rules ...string) int {
 		}
 	}
 	perms[key] = list
+	return n
+}
+
+// removeRules drops the given rules from perms[key], keeping every other one.
+func removeRules(perms map[string]any, key string, rules ...string) int {
+	list, _ := perms[key].([]any)
+	drop := map[string]bool{}
+	for _, r := range rules {
+		drop[r] = true
+	}
+	var keep []any
+	n := 0
+	for _, r := range list {
+		if s, ok := r.(string); ok && drop[s] {
+			n++
+			continue
+		}
+		keep = append(keep, r)
+	}
+	if n > 0 {
+		perms[key] = keep
+	}
 	return n
 }
 

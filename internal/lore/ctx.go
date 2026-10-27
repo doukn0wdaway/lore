@@ -2,21 +2,18 @@ package lore
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
 )
 
 const (
-	ctxHeader      = "[lore] relevant to this prompt (picked by the decisions model):"
-	taskHeader     = "[lore] relevant to the next task (picked by the decisions model):"
-	maxHookContext = 9500 // Claude Code caps additionalContext at 10k characters
+	ctxHeader  = "[lore] relevant to this text (picked by the decisions model):"
+	taskHeader = "[lore] relevant to the next task (picked by the decisions model):"
 )
 
 // Ctx selects knowledge for a free text and writes the [lore] block.
@@ -24,7 +21,7 @@ func (p *Project) Ctx(w io.Writer, text string, d Decider) error {
 	started := time.Now()
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	sel, err := p.Select(ctx, d, text, p.Cfg.Hook.BudgetTokens)
+	sel, err := p.Select(ctx, d, text, p.Cfg.Ctx.BudgetTokens)
 	entry := logEntry{Source: "ctx", State: text}
 	if sel != nil {
 		entry.Scores, entry.Injected = sel.Scores, sel.Keys()
@@ -33,132 +30,14 @@ func (p *Project) Ctx(w io.Writer, text string, d Decider) error {
 		entry.Error = err.Error()
 	}
 	p.logDecision(entry, started)
-	if sel != nil {
-		if out := sel.Render(ctxHeader, nil); out != "" {
+	if sel != nil && err == nil {
+		if out := sel.Render(ctxHeader); out != "" {
 			fmt.Fprint(w, out)
 		} else {
 			fmt.Fprintln(w, "[lore] nothing relevant found")
 		}
 	}
 	return err
-}
-
-// hookInput is what Claude Code sends to a UserPromptSubmit hook.
-type hookInput struct {
-	Prompt     string `json:"prompt"`
-	PromptText string `json:"prompt_text"`
-	SessionID  string `json:"session_id"`
-	CWD        string `json:"cwd"`
-}
-
-// RunHook handles a UserPromptSubmit hook: it never fails the prompt. Any
-// problem is logged and the hook prints nothing.
-func RunHook(stdin io.Reader, w io.Writer, newDecider func(*Project) (Decider, error)) {
-	var in hookInput
-	if err := json.NewDecoder(stdin).Decode(&in); err != nil {
-		return
-	}
-	prompt := in.Prompt
-	if prompt == "" {
-		prompt = in.PromptText
-	}
-	dir := in.CWD
-	if dir == "" {
-		dir = "."
-	}
-	p, err := FindProject(dir)
-	if err != nil || !p.Cfg.Hook.Enabled {
-		return
-	}
-	if len(strings.Fields(prompt)) < p.Cfg.Hook.MinWords || strings.HasPrefix(strings.TrimSpace(prompt), "/") {
-		return
-	}
-	started := time.Now()
-	entry := logEntry{Source: "hook", State: prompt}
-	defer func() { p.logDecision(entry, started) }()
-
-	d, err := newDecider(p)
-	if err != nil {
-		entry.Error = err.Error()
-		return
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(p.Cfg.Hook.TimeoutMS)*time.Millisecond)
-	defer cancel()
-	sel, err := p.Select(ctx, d, prompt, p.Cfg.Hook.BudgetTokens)
-	if err != nil {
-		entry.Error = err.Error()
-	}
-	if sel == nil {
-		return
-	}
-	entry.Scores = sel.Scores
-
-	seen := p.sessionSeen(in.SessionID)
-	out := sel.Render(ctxHeader, seen)
-	if out == "" {
-		return
-	}
-	if len(out) > maxHookContext {
-		out = out[:maxHookContext] + "\n…"
-	}
-	for _, k := range sel.SessionKeys() {
-		if !seen[k] {
-			entry.Injected = append(entry.Injected, k)
-		}
-	}
-	p.sessionAdd(in.SessionID, entry.Injected)
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"hookSpecificOutput": map[string]string{
-			"hookEventName":     "UserPromptSubmit",
-			"additionalContext": out,
-		},
-	})
-}
-
-var sessionIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
-
-func (p *Project) sessionFile(id string) string {
-	if !sessionIDRe.MatchString(id) {
-		return ""
-	}
-	return filepath.Join(p.LocalDir(), "sessions", id+".json")
-}
-
-// sessionSeen returns keys already injected in this session.
-func (p *Project) sessionSeen(id string) map[string]bool {
-	seen := map[string]bool{}
-	path := p.sessionFile(id)
-	if path == "" {
-		return seen
-	}
-	var keys []string
-	if b, err := os.ReadFile(path); err == nil {
-		_ = json.Unmarshal(b, &keys)
-	}
-	for _, k := range keys {
-		seen[k] = true
-	}
-	return seen
-}
-
-func (p *Project) sessionAdd(id string, keys []string) {
-	path := p.sessionFile(id)
-	if path == "" || len(keys) == 0 {
-		return
-	}
-	seen := p.sessionSeen(id)
-	for _, k := range keys {
-		seen[k] = true
-	}
-	all := make([]string, 0, len(seen))
-	for k := range seen {
-		all = append(all, k)
-	}
-	sort.Strings(all)
-	b, _ := json.Marshal(all)
-	if os.MkdirAll(filepath.Dir(path), 0o755) == nil {
-		_ = os.WriteFile(path, b, 0o644)
-	}
 }
 
 // --- facts at the gate ---
@@ -195,7 +74,7 @@ func (p *Project) CheckFacts(c *Change, d Decider) ([]FactReport, error) {
 	if len(facts) == 0 {
 		return nil, fmt.Errorf("%s: no facts — write them as bullets under `## What changes` in proposal.md", c.Name)
 	}
-	zones, _, _, err := p.knowledge()
+	zones, _, err := p.knowledge()
 	if err != nil {
 		return nil, err
 	}

@@ -14,7 +14,7 @@ Build the project's knowledge base in `lore/` (or the `root` from `lore.yaml`) f
 - **One step at a time, approval at each gate.** Never run ahead to the next step before the owner approves the current one.
 - **Existing docs are hints, not truth** (old specs, ADRs, READMEs, `docs/`). Verify against the code; the code and the owner win.
 - **Describe behaviour, not implementation.** No function names, props, table layouts in requirements. Paths belong only in `## Entry points`.
-- Edits to `lore/` prompt the owner for permission — that is expected.
+- Edits to `lore/adr/` prompt the owner for permission — that is expected; zones, `product.md` and `architecture.md` are approved at each step's gate instead.
 - After each step: `lore index` and `lore lint`. Fix every error before asking for approval.
 
 ## Resume first

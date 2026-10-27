@@ -1,26 +1,10 @@
 {
-  "hooks": {
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "command": "lore ctx --hook",
-            "timeout": 10,
-            "type": "command"
-          }
-        ]
-      }
-    ]
-  },
   "permissions": {
     "allow": [
       "Bash(lore:*)"
     ],
     "ask": [
-      "Edit(/lore/zones/**)",
-      "Edit(/lore/adr/**)",
-      "Edit(/lore/product.md)",
-      "Edit(/lore/architecture.md)"
+      "Edit(/lore/adr/**)"
     ]
   }
 }

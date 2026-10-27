@@ -95,7 +95,7 @@ Lint SHALL warn when a zone doc is longer than 300 lines (consider splitting) or
 ## Contracts
 - Gives everyone: the list of zones (id, tldr, file) and lookup by id.
 - Gives `changes`: zone text parsed into `##` sections and `### Requirement:` blocks, for delta checks and merge verification; `INDEX.md` regeneration.
-- Gives `decisions-model`: zones, their requirements and free sections as candidates.
+- Gives `decisions-model`: zones with their tldr, their `## Invariants`, `## Boundaries` and `## Contracts`, and the whole zone text.
 - Gives `adrs`: existing zone ids for checking `zones` of an ADR.
 - Gives `cli` (lint): all checks above.
 - Takes from `adrs`: the ADRs that apply to a zone and their statuses, for `lore show`.

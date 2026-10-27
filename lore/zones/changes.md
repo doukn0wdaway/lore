@@ -46,7 +46,7 @@ The system SHALL read tasks from the checkbox lines of `tasks.md` (`- [ ]` / `- 
 The system SHALL list every active change (everything under `changes/` except `archive/` and hidden folders) with its mode, task progress and the zones its deltas touch.
 
 ### Requirement: Change status
-`lore change status` SHALL print, for one change: the next task, a one-line summary of every delta operation, the accepted ADRs of the touched zones and global ones, model-picked knowledge for the next task, the ADR drafts of the change, and the full text of every delta.
+`lore change status` SHALL print, for one change: the next task, a one-line summary of every delta operation, the accepted ADRs of the touched zones and global ones, model-picked knowledge for the next task (decisions as content, chosen zones by name), the ADR drafts of the change, and the full text of every delta. With `--next` it SHALL print only the next task and the model-picked knowledge for it.
 
 #### Scenario: All tasks done
 - **WHEN** no unchecked task is left (or a code-first change has no tasks)
@@ -59,6 +59,14 @@ The system SHALL list every active change (everything under `changes/` except `a
 #### Scenario: No decisions model
 - **WHEN** there is no API key or the model call fails
 - **THEN** status still prints everything else and says that no extra context was picked
+
+#### Scenario: Between tasks
+- **WHEN** the agent runs `lore change status --next` after finishing task `1.1`
+- **THEN** it prints task `1.2` and the decisions and zone names picked for its text — no delta summary, no delta text, no list of the touched zones' ADRs, no drafts
+
+#### Scenario: Next with all tasks done
+- **WHEN** `--next` is used and no unchecked task is left
+- **THEN** it points to `lore change archive <name>`, as the full status does
 
 ### Requirement: Fact check
 `lore change check` SHALL take every bullet under `## What changes` of the proposal as a fact and report, per fact, the zones it touches and the accepted ADRs it may contradict, above the configured thresholds. Possible contradictions are questions for the owner, not verdicts.
@@ -148,7 +156,7 @@ A delta SHALL be `deltas/<zone-id>.md` and either a whole new zone doc (it has f
 - Takes from `adrs`: the list of ADRs and their statuses, ADR validation (drafts are linted like any ADR; their `zones` may name zones the change creates), superseding an ADR.
 - Takes from `decisions-model`: knowledge selection for the next task (status) and per-fact zone and contradiction scores (check), with the configured thresholds; every call is logged.
 - Takes from `cli`: the change name may be omitted when exactly one change is active.
-- Gives `workflows`: `change new` / `status` / `check` / `archive` / `archive --finish` with their outputs and exit codes; `--finish` exits non-zero when nothing was archived.
+- Gives `workflows`: `change new` / `status [--next]` / `check` / `archive` / `archive --finish` with their outputs and exit codes; `--finish` exits non-zero when nothing was archived.
 - Gives `cli` (lint): change checks — name is kebab-case, `.meta.yaml` is valid with mode `spec` or `code`, delta file names are zone ids (not `global`), delta format problems, a new-zone delta has a matching `id`, a `tldr` and a non-empty `## Purpose`, and the warning about two changes touching the same requirement.
 
 ## Entry points

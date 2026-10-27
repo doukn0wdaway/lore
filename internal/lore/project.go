@@ -14,8 +14,7 @@ import (
 
 const ConfigFile = "lore.yaml"
 
-// Config is the part of lore.yaml the binary reads today. Other keys
-// (decisions model, hook, thresholds) are kept in the file for later stages.
+// Config is the part of lore.yaml the binary reads.
 type Config struct {
 	Root       string `yaml:"root"`
 	MainBranch string `yaml:"main_branch"`
@@ -25,18 +24,15 @@ type Config struct {
 	DecisionsEndpoint  string   `yaml:"decisions_endpoint"`
 	DecisionsProvider  []string `yaml:"decisions_provider"`
 
-	Hook       HookConfig        `yaml:"hook"`
+	Ctx        CtxConfig         `yaml:"ctx"`
 	Thresholds Thresholds        `yaml:"thresholds"`
 	Prompts    map[string]string `yaml:"prompts"`
 
 	AnchorsIgnore []string `yaml:"anchors_ignore"`
 }
 
-type HookConfig struct {
-	Enabled      bool `yaml:"enabled"`
-	MinWords     int  `yaml:"min_words"`
-	TimeoutMS    int  `yaml:"timeout_ms"`
-	BudgetTokens int  `yaml:"budget_tokens"`
+type CtxConfig struct {
+	BudgetTokens int `yaml:"budget_tokens"` // how much of whole zones `lore ctx` prints
 }
 
 type Thresholds struct {
@@ -67,9 +63,7 @@ func (c *Config) defaults() {
 	set(&c.DecisionsModel, "perplexity/pplx-decider-v1.2") // ADR 2026-10-27-pplx-decider-only: no flash model
 	set(&c.DecisionsAPIKeyEnv, "LORE_OPENROUTER_API_KEY")
 	set(&c.DecisionsEndpoint, "https://openrouter.ai/api/alpha/decisions")
-	setI(&c.Hook.MinWords, 4)
-	setI(&c.Hook.TimeoutMS, 6000)
-	setI(&c.Hook.BudgetTokens, 2500)
+	setI(&c.Ctx.BudgetTokens, 8000)
 	setF(&c.Thresholds.Zones, 0.3)
 	setF(&c.Thresholds.IncludeContent, 0.7)
 	setF(&c.Thresholds.IncludePointer, 0.4)
@@ -115,11 +109,29 @@ func LoadProject(dir string) (*Project, error) {
 	return p, nil
 }
 
+// OldHookLine is the line of a top-level `hook:` block left in lore.yaml by an
+// older version (lore has no prompt hook any more), or 0.
+func (p *Project) OldHookLine() int {
+	b, err := os.ReadFile(filepath.Join(p.Root, ConfigFile))
+	if err != nil {
+		return 0
+	}
+	for i, l := range strings.Split(string(b), "\n") {
+		if strings.HasPrefix(l, "hook:") {
+			return i + 1
+		}
+	}
+	return 0
+}
+
+// oldHookMsg explains what to do with an old `hook:` block.
+const oldHookMsg = "`hook:` is no longer used (lore has no prompt hook) — delete the block; the budget of `lore ctx` is `ctx.budget_tokens`"
+
 // Dir is the absolute path of the docs folder.
 func (p *Project) Dir() string { return filepath.Join(p.Root, p.Cfg.Root) }
 
 // LocalDir holds per-machine state inside the docs folder (gitignored):
-// decisions log, per-session dedup, bootstrap progress.
+// decisions log, bootstrap progress.
 func (p *Project) LocalDir() string { return p.Path(".local") }
 
 // EnvFile is the project's own lore env file (gitignored), separate from the app's .env.

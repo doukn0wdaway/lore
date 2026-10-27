@@ -45,7 +45,7 @@ Run `lore change archive [name]` again — it must be clean.
 
 ## 5. Merge
 
-Apply each `deltas/<zone>.md` to `lore/zones/<zone>.md` (edits to `lore/` ask the owner's permission — expected):
+Apply each `deltas/<zone>.md` to `lore/zones/<zone>.md` (no permission prompt here — the owner approves the whole diff in step 6):
 
 | Delta | Merge |
 |---|---|

@@ -280,9 +280,11 @@ func (p *Project) ListChanges(w io.Writer) error {
 	return nil
 }
 
-// Status prints the next task and the context for it: this change's deltas and
-// the decisions of the zones they touch.
-func (p *Project) Status(w io.Writer, c *Change, d Decider) error {
+// Status prints the next task and the context for it: this change's deltas,
+// the decisions of the zones they touch and the knowledge picked for the task.
+// With onlyNext it prints just the next task and the knowledge picked for it,
+// for between tasks, when the rest is already in the agent's context.
+func (p *Project) Status(w io.Writer, c *Change, d Decider, onlyNext bool) error {
 	done, total := c.progress()
 	fmt.Fprintf(w, "change: %s   mode: %s", c.Name, c.Meta.Mode)
 	if total > 0 {
@@ -298,6 +300,10 @@ func (p *Project) Status(w io.Writer, c *Change, d Decider) error {
 		fmt.Fprintln(w, "  tasks.md has no tasks yet — finish the proposal (/lore-propose)")
 	default:
 		fmt.Fprintf(w, "  all work done → run `lore change archive %s` (/lore-archive)\n", c.Name)
+	}
+	if onlyNext {
+		p.taskKnowledge(w, c, d)
+		return nil
 	}
 
 	fmt.Fprintln(w, "\nDELTAS IN THIS CHANGE")
@@ -333,29 +339,7 @@ func (p *Project) Status(w io.Writer, c *Change, d Decider) error {
 	if n == 0 {
 		fmt.Fprintln(w, "  (none)")
 	}
-	if next := c.nextTask(); next != nil {
-		switch {
-		case d == nil:
-			fmt.Fprintln(w, "\n(decisions model not configured: no extra context for the task)")
-		default:
-			started := time.Now()
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			sel, err := p.Select(ctx, d, next.Text, p.Cfg.Hook.BudgetTokens)
-			cancel()
-			entry := logEntry{Source: "status", State: next.Text}
-			if sel != nil {
-				entry.Scores, entry.Injected = sel.Scores, sel.Keys()
-				if out := sel.Render(taskHeader, nil); out != "" {
-					fmt.Fprint(w, "\n"+out)
-				}
-			}
-			if err != nil {
-				entry.Error = err.Error()
-				fmt.Fprintf(w, "\n(decisions model failed: %v)\n", err)
-			}
-			p.logDecision(entry, started)
-		}
-	}
+	p.taskKnowledge(w, c, d)
 	if len(c.Drafts) > 0 {
 		fmt.Fprintln(w, "\nADR DRAFTS IN THIS CHANGE")
 		for _, a := range c.Drafts {
@@ -368,6 +352,35 @@ func (p *Project) Status(w io.Writer, c *Change, d Decider) error {
 		fmt.Fprintf(w, "\n--- %s ---\n%s\n", d.File, strings.TrimRight(d.src, "\n"))
 	}
 	return nil
+}
+
+// taskKnowledge prints what the decisions model picks for the next task:
+// decisions as content, zones by name (the deltas already carry their text).
+func (p *Project) taskKnowledge(w io.Writer, c *Change, d Decider) {
+	next := c.nextTask()
+	if next == nil {
+		return
+	}
+	if d == nil {
+		fmt.Fprintln(w, "\n(decisions model not configured: no extra context for the task)")
+		return
+	}
+	started := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	sel, err := p.Select(ctx, d, next.Text, 0)
+	cancel()
+	entry := logEntry{Source: "status", State: next.Text}
+	if sel != nil {
+		entry.Scores, entry.Injected = sel.Scores, sel.Keys()
+		if out := sel.Render(taskHeader); out != "" {
+			fmt.Fprint(w, "\n"+out)
+		}
+	}
+	if err != nil {
+		entry.Error = err.Error()
+		fmt.Fprintf(w, "\n(decisions model failed: %v)\n", err)
+	}
+	p.logDecision(entry, started)
 }
 
 type indent struct{ w io.Writer }

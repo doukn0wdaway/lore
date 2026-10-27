@@ -1,6 +1,6 @@
 ---
 id: 2026-10-27-read-freely-edit-asks
-status: accepted
+status: superseded
 zones: [install, workflows]
 tldr: "The agent may read lore docs freely; every edit of zones, ADRs, product.md and architecture.md asks the owner through Claude Code's permissions.ask — there is no hard ban on editing them."
 rules:
@@ -9,7 +9,7 @@ rules:
   - "DON'T: turn the ask rules into deny rules"
   - "DON'T: work around the prompt by editing through another tool"
 supersedes: []
-superseded_by: null
+superseded_by: 2026-10-27-edits-ask-only-for-adrs
 inferred: false
 ref: "design.md §15"
 ---

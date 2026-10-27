@@ -2,7 +2,7 @@
 root: lore                       # folder with the docs
 main_branch: main                # base for `lore change new --from-diff`
 
-# Decisions model: prompt hook, change status, fact checks at the gate.
+# Decisions model: lore ctx, change status, fact checks at the gate.
 # The key is lore's own, separate from the app's env: the variable below from the
 # environment, lore/.env (this project, gitignored) or ~/.config/lore/.env (all projects).
 decisions_model: perplexity/pplx-decider-v1.2
@@ -10,16 +10,13 @@ decisions_api_key_env: LORE_OPENROUTER_API_KEY
 decisions_endpoint: https://openrouter.ai/api/alpha/decisions
 decisions_provider: [Perplexity]  # provider order on OpenRouter, no fallbacks
 
-hook:
-  enabled: true                  # inject context on every prompt (needs the API key)
-  min_words: 4                   # shorter prompts are not matched
-  timeout_ms: 6000
-  budget_tokens: 2500            # how much content to inject per prompt
+ctx:
+  budget_tokens: 8000            # how much of whole zones `lore ctx` prints
 
 thresholds:
-  zones: 0.3                     # stage 1 of selection — low, never lose a zone
-  include_content: 0.7           # above: inject the content
-  include_pointer: 0.4           # above: inject a pointer
+  zones: 0.3                     # above: the zone is related — low, never lose a zone
+  include_content: 0.7           # above: show the ADR's content
+  include_pointer: 0.4           # above: name the ADR as maybe relevant
   contradiction: 0.5             # above: ask the owner at the gates
 
 prompts:

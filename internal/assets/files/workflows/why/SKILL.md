@@ -7,7 +7,7 @@ description: Answer "why is it done this way?" about the project from recorded l
 
 ## 1. Find the area
 
-From `lore/INDEX.md` pick the zone(s) the question is about. `lore show <zone>` prints the zone and its active decisions (own and global).
+`lore ctx "<the question, in your own words>"` prints the accepted ADRs that relate to it and the related zones, whole. A zone it didn't print, or no API key: pick the zone(s) from `lore/INDEX.md` and run `lore show <zone>` — the zone and its active decisions (own and global).
 
 ## 2. Find the decision
 

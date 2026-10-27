@@ -1,26 +1,26 @@
 # Product
 
 ## What it is
-A CLI plus a set of agent workflows that keep a project's knowledge in the repo: what the system does (zones), why it is built this way (ADRs) and what is being changed now (changes). Relevant knowledge is delivered to the AI agent automatically; the docs change only through a gate the owner approves.
+A CLI plus a set of agent workflows that keep a project's knowledge in the repo: what the system does (zones), why it is built this way (ADRs) and what is being changed now (changes). The agent gets the relevant knowledge with one command; the docs change only through a gate the owner approves.
 
 ## Who it is for
 A developer who builds projects with AI coding agents (Claude Code) and approves what the agent writes. The agent is the second reader of everything lore produces.
 
 ## Scenarios
 
-- [live] Owner sets up lore in a project → docs skeleton, agent protocol, permissions, prompt hook and skills are in place
+- [live] Owner sets up lore in a project → docs skeleton, agent protocol, permissions and skills are in place
   zones: cli, install
-- [live] Owner upgrades lore in a project → workflows and prompts are updated (local edits kept unless forced), new config keys added, old layouts migrated
+- [live] Owner upgrades lore in a project → workflows and prompts are updated (local edits kept unless forced), new config keys added, old layouts migrated, the old prompt hook removed from the settings
   zones: cli, install
 - [live] Owner bootstraps an existing project → agent derives product, zone map, architecture and zones from the code, then interviews the owner and records ADRs
   zones: workflows, docs, adrs, cli
-- [live] Owner sends a prompt → agent gets the relevant requirements and decisions in its context, each only once per session
+- [live] Owner or agent needs project knowledge → `lore ctx` gives the decisions and zones that relate to the work or question
   zones: decisions-model, docs, adrs
 - [live] Owner explores an idea → agent thinks it through against existing zones and decisions, no code
   zones: workflows, decisions-model
 - [live] Owner proposes a feature spec-first → proposal, deltas, tasks and ADR drafts are approved before any code
   zones: workflows, changes, adrs
-- [live] Agent implements a change task by task → before each task it sees the next task, the deltas and the relevant decisions
+- [live] Agent implements a change task by task → at the start it sees the next task, the deltas and the relevant decisions; before each following task, the next task and the decisions picked for it
   zones: workflows, changes, decisions-model
 - [live] Owner asks to document code already written → a change is created from the git diff and its facts are written as deltas
   zones: workflows, changes

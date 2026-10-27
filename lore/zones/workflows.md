@@ -10,7 +10,7 @@ Defines how the agent works with lore: which steps it follows for each kind of t
 ## Boundaries
 - What the CLI commands check and do (statuses, delta checks, merge verification, archiving) → `changes`, `adrs`, `docs`.
 - Copying workflows into a project, linking them as skills, rendering the `AGENTS.md` block → `install`.
-- Picking context automatically → `decisions-model`; workflows only say when to call `lore ctx` / `lore change status`.
+- Picking knowledge for a text → `decisions-model`; workflows only say when to call `lore ctx` / `lore change status`.
 
 ## Requirements
 
@@ -59,7 +59,7 @@ A feature planned ahead SHALL go `/lore-propose` (proposal, deltas, tasks, ADR d
 
 #### Scenario: Implementing
 - **WHEN** the agent applies a change
-- **THEN** before each task it runs `lore change status`, implements that task only, verifies it, ticks it in `tasks.md`, and never edits zone docs or ADRs in `adr/`
+- **THEN** it runs `lore change status` at the start (and again whenever its context was lost), and `lore change status --next` before each following task; it implements that task only, verifies it, ticks it in `tasks.md`, and never edits zone docs or ADRs in `adr/`
 
 #### Scenario: Scope changes
 - **WHEN** a task turns out wrong or new work appears
@@ -102,7 +102,22 @@ Zones and `product.md` SHALL change outside a change only through `/lore-zone` a
 - **THEN** the agent stops and goes through `/lore-adr` first
 
 ### Requirement: Explore without building
-`/lore-explore` SHALL ground the discussion in lore (`lore ctx`, `lore show`, `product.md`, active changes), surface collisions with decisions, and never write code or lore docs; at the end it only offers the next step.
+`/lore-explore` SHALL ground the discussion in lore (`lore ctx` for the topic, `lore show` when a whole zone is needed, `product.md`, active changes), surface collisions with decisions, and never write code or lore docs; at the end it only offers the next step.
+
+### Requirement: Knowledge on demand
+The agent SHALL get project knowledge with `lore ctx "<text>"` when the owner asks it to look something up or when it decides it needs more, where the text is its own description of the work or question — never the owner's message quoted verbatim. `/lore-propose`, `/lore-explore` and `/lore-why` SHALL start from `lore ctx` instead of picking zones by hand and opening each with `lore show`.
+
+#### Scenario: Proposing a feature
+- **WHEN** the agent has understood what changes and why
+- **THEN** it runs `lore ctx` with that description and works from the decisions and zones it prints
+
+#### Scenario: Zone not printed
+- **WHEN** the agent needs a zone that `lore ctx` did not print (not chosen, or over the budget)
+- **THEN** it opens that zone with `lore show <zone>`
+
+#### Scenario: No API key
+- **WHEN** `lore ctx` fails because there is no key
+- **THEN** the agent picks the zones from `INDEX.md` and opens them with `lore show <zone>`
 
 ### Requirement: Audit reports only
 `/lore-audit` SHALL compare docs with the code per zone and report each claim as stale, missing or unverifiable (counting the ok ones), with file paths; an ADR rule the code violates is reported as "bug or new decision?". Nothing is fixed without the owner's word.
@@ -118,7 +133,7 @@ Zones and `product.md` SHALL change outside a change only through `/lore-zone` a
 ## Contracts
 - Takes from `changes`: `lore change new / list / status / check / archive [--finish]` and their outputs.
 - Takes from `adrs`: `lore adr new / accept / list`; from `docs`: `lore show`, `lore index`, `INDEX.md`; from `cli`: `lore lint`.
-- Takes from `decisions-model`: `lore ctx` and the `[lore]` block injected into prompts.
+- Takes from `decisions-model`: `lore ctx`.
 - Gives the agent: skills `/lore-<name>` (via `install`) and the protocol block in `AGENTS.md`.
 
 ## Entry points

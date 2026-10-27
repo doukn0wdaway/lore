@@ -179,11 +179,110 @@ func TestInitKeepsExistingAgentsAndSettings(t *testing.T) {
 	if !strings.HasPrefix(string(agents), "# Mine\n\nKeep me.\n\n"+blockBegin) {
 		t.Fatalf("AGENTS.md = %q", agents)
 	}
+	for _, want := range []string{`lore ctx "<the work or question, in your own words>"`, "never the\n  owner's message verbatim", "--next` before each next task"} {
+		if !strings.Contains(string(agents), want) {
+			t.Fatalf("AGENTS.md block misses %q:\n%s", want, agents)
+		}
+	}
+	if strings.Contains(string(agents), "injected automatically") {
+		t.Fatalf("no automatic injection any more:\n%s", agents)
+	}
 	settings, _ := os.ReadFile(filepath.Join(dir, ".claude/settings.json"))
-	for _, want := range []string{`"Bash(go:*)"`, `"Bash(lore:*)"`, `"Edit(/lore/zones/**)"`, `"other": 1`} {
+	for _, want := range []string{`"Bash(go:*)"`, `"Bash(lore:*)"`, `"Edit(/lore/adr/**)"`, `"other": 1`} {
 		if !strings.Contains(string(settings), want) {
 			t.Fatalf("settings missing %s:\n%s", want, settings)
 		}
+	}
+	if strings.Contains(string(settings), "UserPromptSubmit") {
+		t.Fatalf("no prompt hook is registered:\n%s", settings)
+	}
+}
+
+func TestUpgradeRemovesOldPromptHook(t *testing.T) {
+	p := newProject(t)
+	path := filepath.Join(p.Root, ".claude/settings.json")
+	write(t, path, `{"hooks":{
+  "UserPromptSubmit":[
+    {"hooks":[{"type":"command","command":"lore ctx --hook","timeout":10}]},
+    {"matcher":"x","hooks":[{"type":"command","command":"lore ctx --hook"},{"type":"command","command":"mine"}]}
+  ],
+  "Stop":[{"hooks":[{"type":"command","command":"other"}]}]
+}}`)
+	if err := p.Upgrade(io.Discard, false); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(path)
+	if strings.Contains(string(got), "lore ctx --hook") {
+		t.Fatalf("old hook kept:\n%s", got)
+	}
+	for _, want := range []string{`"command": "mine"`, `"matcher": "x"`, `"command": "other"`, `"Bash(lore:*)"`} {
+		if !strings.Contains(string(got), want) {
+			t.Fatalf("settings lost %s:\n%s", want, got)
+		}
+	}
+	if strings.Count(string(got), `"hooks": [`) != 2 {
+		t.Fatalf("the emptied UserPromptSubmit entry should be gone:\n%s", got)
+	}
+
+	write(t, path, `{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"lore ctx --hook"}]}]}}`)
+	if err := p.Upgrade(io.Discard, false); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(path); strings.Contains(string(got), `"hooks"`) {
+		t.Fatalf("an empty hooks map should be dropped:\n%s", got)
+	}
+}
+
+func TestSettingsAskOnlyForADRs(t *testing.T) {
+	p := newProject(t)
+	path := filepath.Join(p.Root, ".claude/settings.json")
+	write(t, path, `{"permissions":{"ask":["Edit(/lore/zones/**)","Edit(/lore/adr/**)","Edit(/lore/product.md)","Edit(/lore/architecture.md)","Edit(/secrets/**)"]}}`)
+	if err := p.Upgrade(io.Discard, false); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(path)
+	for _, gone := range []string{"zones/**", "product.md", "architecture.md"} {
+		if strings.Contains(string(got), gone) {
+			t.Errorf("old ask rule for %s kept:\n%s", gone, got)
+		}
+	}
+	for _, want := range []string{`"Edit(/lore/adr/**)"`, `"Edit(/secrets/**)"`, `"Bash(lore:*)"`} {
+		if !strings.Contains(string(got), want) {
+			t.Errorf("settings lost %s:\n%s", want, got)
+		}
+	}
+	before := string(got)
+	if err := p.Upgrade(io.Discard, false); err != nil {
+		t.Fatal(err)
+	}
+	if again, _ := os.ReadFile(path); string(again) != before {
+		t.Fatalf("second upgrade changed settings:\n%s", again)
+	}
+}
+
+func TestUpgradeHintsAboutOldHookBlock(t *testing.T) {
+	p := newProject(t)
+	cfgPath := filepath.Join(p.Root, ConfigFile)
+	cfg, _ := os.ReadFile(cfgPath)
+	old := string(cfg) + "\nhook:\n  enabled: true   # mine\n  min_words: 4\n"
+	write(t, cfgPath, old)
+	var out strings.Builder
+	if err := p.Upgrade(&out, false); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "`hook:` is no longer used") {
+		t.Fatalf("no hint:\n%s", out.String())
+	}
+	if got, _ := os.ReadFile(cfgPath); !strings.Contains(string(got), "hook:\n  enabled: true   # mine\n  min_words: 4\n") {
+		t.Fatalf("the hook block must be kept as is:\n%s", got)
+	}
+	out.Reset()
+	write(t, cfgPath, string(cfg))
+	if err := p.Upgrade(&out, false); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), "hook") {
+		t.Fatalf("hint without a hook block:\n%s", out.String())
 	}
 }
 

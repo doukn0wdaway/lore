@@ -80,6 +80,9 @@ func (p *Project) Lint() ([]Issue, error) {
 	if err := p.Cfg.checkKeyEnv(); err != nil {
 		l.errf(ConfigFile, 0, "%s", strings.TrimPrefix(err.Error(), ConfigFile+": "))
 	}
+	if line := p.OldHookLine(); line > 0 {
+		l.warnf(ConfigFile, line, "%s", oldHookMsg)
+	}
 	l.zones(zones)
 	l.adrs(adrs, func(a *ADR, z string) bool { return FindZone(zones, z) != nil || newZones[a.Change][z] })
 	l.changes(changes)

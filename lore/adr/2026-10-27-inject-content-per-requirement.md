@@ -1,6 +1,6 @@
 ---
 id: 2026-10-27-inject-content-per-requirement
-status: accepted
+status: superseded
 zones: [decisions-model]
 tldr: "Context is pushed to the agent on every prompt by the hook as content, not as 'go read X'; the unit of selection is a requirement (or section, or ADR), chosen in two stages — zones first, then their items — with a timeout and no optimisation yet."
 rules:
@@ -9,7 +9,7 @@ rules:
   - "DON'T: inject whole zones per prompt"
   - "DON'T: optimise the selection (caching, parallel tricks, fewer stages) before the pilot shows it is needed"
 supersedes: []
-superseded_by: null
+superseded_by: 2026-10-27-agent-pulls-knowledge-with-ctx
 inferred: false
 ref: "design.md §15"
 ---

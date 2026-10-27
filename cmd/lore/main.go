@@ -31,13 +31,15 @@ Usage:
   lore change new <name> [--from-diff [--base ref]]
                                     start a change: spec-first, or code-first from the git diff
   lore change list                  active changes
-  lore change status [name]         next task + deltas + decisions of the touched zones
+  lore change status [name] [--next]
+                                    next task + deltas + decisions of the touched zones;
+                                    --next: only the next task and what the model picks for it
   lore change archive [name]        pre-merge checks for the gates
   lore change archive [name] --finish
                                     after merge + owner's yes: verify, move ADR drafts, archive
                                     (name may be omitted when one change is active)
-  lore ctx "<text>"                 pick knowledge for a text with the decisions model
-  lore ctx --hook                   Claude Code UserPromptSubmit hook (reads JSON on stdin)
+  lore ctx "<text>"                 decisions and zones related to a text (decisions model);
+                                    the text is your own description of the work or question
   lore change check [name]          facts of the change vs zones and accepted ADRs (model)
   lore agents sync                  link lore/workflows/* into .claude/skills as lore-*
   lore upgrade [--force]            update workflows/prompts and the AGENTS.md block
@@ -90,11 +92,6 @@ func run(args []string) error {
 		return nil
 	}
 
-	if cmd == "ctx" && len(rest) == 1 && rest[0] == "--hook" {
-		lore.RunHook(os.Stdin, os.Stdout, func(p *lore.Project) (lore.Decider, error) { return p.NewDecider() })
-		return nil
-	}
-
 	p, err := lore.FindProject(".")
 	if err != nil {
 		return err
@@ -127,7 +124,11 @@ func run(args []string) error {
 	case "change":
 		return cmdChange(p, rest)
 	case "ctx":
-		text := strings.TrimSpace(strings.Join(rest, " "))
+		f, err := parseFlags(rest, nil, nil)
+		if err != nil {
+			return err
+		}
+		text := strings.TrimSpace(strings.Join(f.args, " "))
 		if text == "" {
 			return errors.New(`usage: lore ctx "<text>"`)
 		}
@@ -269,7 +270,7 @@ func cmdChange(p *lore.Project, args []string) error {
 	case "list":
 		return p.ListChanges(os.Stdout)
 	case "status":
-		f, err := parseFlags(args[1:], nil, nil)
+		f, err := parseFlags(args[1:], nil, []string{"next"})
 		if err != nil {
 			return err
 		}
@@ -278,7 +279,7 @@ func cmdChange(p *lore.Project, args []string) error {
 			return err
 		}
 		d, _ := p.NewDecider() // optional: without a key status shows deltas and ADRs only
-		return p.Status(os.Stdout, c, d)
+		return p.Status(os.Stdout, c, d, f.bools["next"])
 	case "check":
 		f, err := parseFlags(args[1:], nil, nil)
 		if err != nil {

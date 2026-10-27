@@ -8,25 +8,21 @@ tldr: "The lore binary as a command line: commands and subcommands, flags before
 How the `lore` binary meets the user: finding the project, reading `lore.yaml`, parsing commands and flags, and reporting problems with the right exit code. It owns no domain rules — every command hands the work to the zone that owns the action.
 
 ## Boundaries
-- What each command does → the zone of its object: `install` (init, upgrade, agents sync), `docs` (index, show), `adrs` (adr …), `changes` (change …), `decisions-model` (ctx, the hook).
-- What lint checks → the zone of the checked thing (`docs`, `adrs`, `changes`, `decisions-model` for the key guard). This zone only runs them and reports.
+- What each command does → the zone of its object: `install` (init, upgrade, agents sync), `docs` (index, show), `adrs` (adr …), `changes` (change …), `decisions-model` (ctx).
+- What lint checks → the zone of the checked thing (`docs`, `adrs`, `changes`, `decisions-model` for the key guard). This zone only runs them and reports, and checks `lore.yaml` itself.
 - Adding new keys to an existing `lore.yaml` → `install`.
 
 ## Requirements
 
 ### Requirement: Find the project
-Every command except `init`, `help`, `version` and the prompt hook SHALL find the project by walking up from the current directory to the nearest folder containing `lore.yaml`; that folder is the project root, and the docs folder is `root` from `lore.yaml` under it.
+Every command except `init`, `help` and `version` SHALL find the project by walking up from the current directory to the nearest folder containing `lore.yaml`; that folder is the project root, and the docs folder is `root` from `lore.yaml` under it.
 
 #### Scenario: No project
 - **WHEN** no `lore.yaml` exists here or in any parent
 - **THEN** the command fails and suggests `lore init`
 
-#### Scenario: Hook outside the project
-- **WHEN** the prompt hook runs
-- **THEN** it looks for `lore.yaml` from the session's working directory in the hook input, not from the process's current directory
-
 ### Requirement: Config defaults
-`lore.yaml` SHALL need no keys at all: every missing or zero value gets its default — `root: lore`, `main_branch: main`, the decisions model, endpoint and key variable, `hook.min_words: 4`, `hook.timeout_ms: 6000`, `hook.budget_tokens: 2500`, thresholds `0.3 / 0.7 / 0.4 / 0.5`.
+`lore.yaml` SHALL need no keys at all: every missing or zero value gets its default — `root: lore`, `main_branch: main`, the decisions model, endpoint and key variable, `ctx.budget_tokens: 8000`, thresholds `0.3 / 0.7 / 0.4 / 0.5`.
 
 #### Scenario: Broken YAML
 - **WHEN** `lore.yaml` doesn't parse
@@ -63,9 +59,16 @@ A failing command SHALL print `lore: <message>` to stderr and exit 1. Commands t
 - **WHEN** lint finds warnings and no errors
 - **THEN** it exits 0
 
+### Requirement: Old hook keys
+`lore lint` SHALL warn when `lore.yaml` has a `hook:` block: its keys are no longer read, and the budget is `ctx.budget_tokens`.
+
+#### Scenario: Upgraded project with the old block
+- **WHEN** `lore.yaml` has `hook:` with `budget_tokens: 4000` and no `ctx:` block
+- **THEN** lint warns that `hook:` is unused and that the budget belongs in `ctx.budget_tokens`; the default 8000 is used
+
 ## Invariants
 - The CLI never asks interactive questions; everything comes from arguments, files and the environment, so the agent can run it.
-- Read-only commands (`lint`, `show`, `adr list`, `change list`, `change status`, `change check`, `ctx`) never change the docs; only the decisions log and session files in `lore/.local/` are written.
+- Read-only commands (`lint`, `show`, `adr list`, `change list`, `change status`, `change check`, `ctx`) never change the docs; only the decisions log in `lore/.local/` is written.
 - Every message about a file uses its path relative to the project root.
 
 ## Contracts
@@ -79,8 +82,7 @@ A failing command SHALL print `lore: <message>` to stderr and exit 1. Commands t
 - `internal/lore/lint.go` — the lint run and the issue format
 
 ## Gotchas
-- A zero value in `lore.yaml` means "use the default": a threshold of `0` or `min_words: 0` can't be set.
-- `hook.enabled` has no default: a `lore.yaml` without it has the prompt hook switched off. `lore init` writes `enabled: true`.
+- A zero value in `lore.yaml` means "use the default": a threshold of `0` or `budget_tokens: 0` can't be set.
 - `-h` or `--help` anywhere prints usage, even as a value: `lore ctx "--help"` shows help instead of picking knowledge.
 - Single-dash flags work too (`-zones a,b`), since leading dashes are stripped.
 - `lore change archive` without `--finish` also exits 1 on errors, so the gate can be scripted.

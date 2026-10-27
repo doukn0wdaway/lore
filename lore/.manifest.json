@@ -3,15 +3,15 @@
     "prompts/contradicts.txt": "5c687a30ac650ea1ee53ff382ec48f0b929cda933c3009f65f09861689b911dd",
     "prompts/relates.txt": "125aa20c7585d6d7883ee7af8b768f0fb6f658326f68dd49bc5b5bc94f4bc56c",
     "workflows/adr/SKILL.md": "55a1e32de7c86822dca43a087d7097fa547e879d8cf88bb385b30becce24e736",
-    "workflows/apply/SKILL.md": "88a3ec10b046d879c05505a0c8880635ee673fc406295026b255291e1c97407f",
-    "workflows/archive/SKILL.md": "46465454fa34b4e48b56a4dc4f6c5c9c07955e26ef4f28b6c6924e0b84bdd5e1",
+    "workflows/apply/SKILL.md": "b8d01900f0aec4e0358a40afc2d7ce83ddae892391a2b8b89ec33000f3f5b5ff",
+    "workflows/archive/SKILL.md": "9f23072f7babdec2a82537a275b06023ad20ce4eee48a522198267aec07f003d",
     "workflows/audit/SKILL.md": "e2ad1ed6814ed096fb1e0c0256f19bf7b75af2b9bfaa76f855ac7a6b262a567c",
-    "workflows/bootstrap/SKILL.md": "00956b78428138e2a50b8634dc4947f8c8e687831bec6846406d604c604e5e38",
+    "workflows/bootstrap/SKILL.md": "72e92b30b420cfe13c6a409f0866b456a6c3ab47b54b46df8616d3fe99f5b731",
     "workflows/document/SKILL.md": "e921c8ecc7d64c9a77ac104f7ef74fd8976bc3577781cc7d6cef4364e30181d7",
-    "workflows/explore/SKILL.md": "0c648c63756305d4363dfb754c9851b498954ccc2d4678464a1d713a8865074c",
+    "workflows/explore/SKILL.md": "065bb5b7785c239564e3dfc4e9b88d6a54c7e9ba0215640e7426ac49d5b6f854",
     "workflows/product/SKILL.md": "035606acf4284382600bedb0e097813a0c9df061fe81fb3ad131528da2fbd10a",
-    "workflows/propose/SKILL.md": "29405259d1ed0029e8075c504221692c8cd7e1c5982b2832476c72389299e1a6",
-    "workflows/why/SKILL.md": "d13ff28506e32bf1d0434e999d8e537fba3a011a07bec2fbb4aa0b367692b575",
+    "workflows/propose/SKILL.md": "fb1dbed110e06a506f29bea864ca9d05e1d274811527c0b8e5f49df3e724841e",
+    "workflows/why/SKILL.md": "53d0336b3c39e2ea3d8400f33588ce4c608a61ccb1091ce62d378a6642eef39c",
     "workflows/zone/SKILL.md": "66cfa6bb41b19023e63721c36163b1abff65c80e361860b2f9dea5b1a3486b02"
   }
 }

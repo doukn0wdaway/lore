@@ -1,9 +1,9 @@
 package lore
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -52,6 +52,9 @@ The system SHALL remind about a recurring payment before the charge.
 - **WHEN** a payment is due tomorrow
 - **THEN** remind
 
+## Invariants
+- Reminders never go out on weekends.
+
 ## Gotchas
 - hledger amounts are strings.
 `)
@@ -78,85 +81,222 @@ The system SHALL remind about a recurring payment before the charge.
 	return p
 }
 
-func TestSelectTwoStages(t *testing.T) {
+// remindersADR is the fixture ADR id; built apart from "ADR " so lint doesn't read it as a code anchor.
+const remindersADR = "2026-10-01-reminders-enqueue"
+
+func TestSelectZonesAndDecisions(t *testing.T) {
 	p := knowledgeProject(t)
 	sel, err := p.Select(context.Background(), &keywordDecider{}, "change the payment reminder to three days", 2500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sel.Zones) != 1 || sel.Zones[0].Zone != "finance" || len(sel.Named) != 0 {
+		t.Fatalf("zones = %+v named = %+v", sel.Zones, sel.Named)
+	}
+	if len(sel.Decisions) != 1 || sel.Decisions[0].Name != "2026-10-01-reminders-enqueue" {
+		t.Fatalf("decisions = %+v", sel.Decisions)
+	}
+	// every zone and every accepted ADR is asked, nothing else
+	want := []string{"zone:finance", "zone:vault", "adr:2026-10-01-reminders-enqueue", "adr:2026-10-01-utc"}
+	if len(sel.Scores) != len(want) {
+		t.Fatalf("scores = %v", sel.Scores)
+	}
+	for _, k := range want {
+		if _, ok := sel.Scores[k]; !ok {
+			t.Errorf("%s not scored", k)
+		}
+	}
+	out := sel.Render(ctxHeader)
+	for _, want := range []string{
+		"ADR " + remindersADR,
+		"=== zone finance",
+		"### Requirement: Payment reminder", // the zone is printed whole
+		"- hledger amounts are strings.",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("render misses %q:\n%s", want, out)
+		}
+	}
+	if strings.Index(out, "ADR "+remindersADR) > strings.Index(out, "=== zone finance") {
+		t.Errorf("decisions must come before zones:\n%s", out)
+	}
+	if strings.Contains(out, "Obsidian") {
+		t.Errorf("vault was not chosen:\n%s", out)
+	}
+	if again := sel.Render(ctxHeader); again != out {
+		t.Fatal("render is not deterministic")
+	}
+}
+
+// A zone is judged by its invariants, boundaries and contracts too, not only by its tldr.
+func TestSelectZoneThroughInvariant(t *testing.T) {
+	p := knowledgeProject(t)
+	sel, err := p.Select(context.Background(), &keywordDecider{}, "send everything on weekends", 2500)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(sel.Zones) != 1 || sel.Zones[0].Zone != "finance" {
 		t.Fatalf("zones = %+v", sel.Zones)
 	}
-	keys := strings.Join(sel.Keys(), "\n")
-	for _, want := range []string{"req:finance›Payment reminder", "adr:2026-10-01-reminders-enqueue"} {
-		if !strings.Contains(keys, want) {
-			t.Errorf("missing %s in\n%s", want, keys)
-		}
-	}
-	if strings.Contains(keys, "vault") {
-		t.Errorf("vault was not selected in stage 1, its content must not be asked:\n%s", keys)
-	}
-	if _, ok := sel.Scores["adr:2026-10-01-utc"]; !ok {
-		t.Error("global ADRs are always candidates in stage 2")
-	}
-	out := sel.Render(ctxHeader, nil)
-	if !strings.Contains(out, "The system SHALL remind about a recurring payment") || !strings.Contains(out, "zones: finance") {
-		t.Fatalf("render:\n%s", out)
-	}
-	if again := sel.Render(ctxHeader, map[string]bool{}); again != out {
-		t.Fatal("render is not deterministic")
-	}
 }
 
-func TestSelectBudgetDemotesToPointers(t *testing.T) {
+func TestSelectADROfSeveralZonesAskedOnce(t *testing.T) {
 	p := knowledgeProject(t)
-	sel, err := p.Select(context.Background(), &keywordDecider{}, "payment reminder in finance", 1)
+	now := time.Date(2026, 10, 2, 0, 0, 0, 0, time.UTC)
+	path, err := p.NewADR("shared", []string{"finance", "vault"}, "", nil, "", now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(sel.Content) != 0 || len(sel.Pointers) == 0 {
-		t.Fatalf("with no budget everything relevant becomes a pointer: content %d pointers %d", len(sel.Content), len(sel.Pointers))
+	fillADR(t, p, path)
+	if _, err := p.AcceptADR("2026-10-02-shared"); err != nil {
+		t.Fatal(err)
+	}
+	asked := map[string]int{}
+	d := deciderFunc(func(_ string, qs map[string]Question) map[string]float64 {
+		out := map[string]float64{}
+		for id, q := range qs {
+			asked[q.Instructions]++
+			out[id] = 0.1
+		}
+		return out
+	})
+	if _, err := p.Select(context.Background(), d, "anything", 2500); err != nil {
+		t.Fatal(err)
+	}
+	for q, n := range asked {
+		if n != 1 {
+			t.Errorf("asked %d times: %s", n, q)
+		}
+	}
+	if len(asked) != 5 {
+		t.Errorf("questions = %d, want 2 zones + 3 ADRs", len(asked))
 	}
 }
 
-func TestHook(t *testing.T) {
+func TestSelectBudgetNamesZones(t *testing.T) {
 	p := knowledgeProject(t)
-	cfg, _ := os.ReadFile(filepath.Join(p.Root, ConfigFile))
-	if !strings.Contains(string(cfg), "enabled: true") {
-		t.Fatal("hook should be enabled in a fresh lore.yaml")
+	sel, err := p.Select(context.Background(), &keywordDecider{}, "payment reminder in finance", 0)
+	if err != nil {
+		t.Fatal(err)
 	}
-	d := &keywordDecider{}
-	run := func(prompt string) string {
-		in, _ := json.Marshal(map[string]string{"prompt": prompt, "session_id": "s1", "cwd": p.Root})
-		var out bytes.Buffer
-		RunHook(bytes.NewReader(in), &out, func(*Project) (Decider, error) { return d, nil })
-		return out.String()
+	if len(sel.Zones) != 0 || len(sel.Named) != 1 || len(sel.Decisions) != 1 {
+		t.Fatalf("with no budget zones are named, decisions still shown: zones %d named %d decisions %d", len(sel.Zones), len(sel.Named), len(sel.Decisions))
 	}
-	if out := run("ok"); out != "" || d.calls != 0 {
-		t.Fatalf("short prompt should be skipped: %q", out)
+	if out := sel.Render(ctxHeader); !strings.Contains(out, "zones: finance (0.90) — open with `lore show <zone>`") || !strings.Contains(out, "ADR "+remindersADR) {
+		t.Fatalf("render:\n%s", out)
 	}
-	if out := run("/lore-archive voice messages now"); out != "" {
-		t.Fatalf("slash commands should be skipped: %q", out)
+}
+
+func TestCtx(t *testing.T) {
+	p := knowledgeProject(t)
+	var out strings.Builder
+	if err := p.Ctx(&out, "change the payment reminder to three days", &keywordDecider{}); err != nil {
+		t.Fatal(err)
 	}
-	first := run("please change the payment reminder to three days")
-	var resp struct {
-		HookSpecificOutput struct {
-			HookEventName     string `json:"hookEventName"`
-			AdditionalContext string `json:"additionalContext"`
-		} `json:"hookSpecificOutput"`
-	}
-	if err := json.Unmarshal([]byte(first), &resp); err != nil {
-		t.Fatalf("hook output is not JSON: %q", first)
-	}
-	if resp.HookSpecificOutput.HookEventName != "UserPromptSubmit" || !strings.Contains(resp.HookSpecificOutput.AdditionalContext, "Payment reminder") {
-		t.Fatalf("hook output: %+v", resp)
-	}
-	if second := run("please change the payment reminder to three days"); second != "" {
-		t.Fatalf("same context injected twice in a session: %q", second)
+	if !strings.Contains(out.String(), "=== zone finance") || !strings.Contains(out.String(), "ADR "+remindersADR) {
+		t.Fatalf("ctx:\n%s", out.String())
 	}
 	logged, _ := os.ReadFile(filepath.Join(p.LocalDir(), "log.jsonl"))
-	if strings.Count(string(logged), `"source":"hook"`) != 2 {
+	if !strings.Contains(string(logged), `"source":"ctx"`) {
 		t.Fatalf("log:\n%s", logged)
+	}
+	if _, err := os.Stat(filepath.Join(p.LocalDir(), "sessions")); err == nil {
+		t.Fatal("no per-session state any more")
+	}
+}
+
+func TestCtxFailureIsNotNothingFound(t *testing.T) {
+	p := knowledgeProject(t)
+	var out strings.Builder
+	err := p.Ctx(&out, "anything", failingDecider{})
+	if err == nil || strings.Contains(out.String(), "nothing relevant") {
+		t.Fatalf("err %v, out %q", err, out.String())
+	}
+}
+
+type failingDecider struct{}
+
+func (failingDecider) Noul(context.Context, string, map[string]Question) (map[string]float64, error) {
+	return nil, errors.New("timeout")
+}
+
+func TestCtxBudgetAndOldHookBlock(t *testing.T) {
+	p := knowledgeProject(t)
+	cfgPath := filepath.Join(p.Root, ConfigFile)
+	cfg, _ := os.ReadFile(cfgPath)
+	if p.Cfg.Ctx.BudgetTokens != 8000 || !strings.Contains(string(cfg), "ctx:\n  budget_tokens: 8000") || strings.Contains(string(cfg), "hook:") {
+		t.Fatalf("budget %d, lore.yaml:\n%s", p.Cfg.Ctx.BudgetTokens, cfg)
+	}
+	hookWarning := func() *Issue {
+		issues, err := p.Lint()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, i := range issues {
+			if strings.Contains(i.Msg, "`hook:` is no longer used") {
+				return &i
+			}
+		}
+		return nil
+	}
+	if w := hookWarning(); w != nil {
+		t.Fatalf("fresh project warns: %v", w)
+	}
+	old := strings.Replace(string(cfg), "ctx:\n  budget_tokens: 8000", "hook:\n  enabled: true\n  budget_tokens: 4000", 1)
+	write(t, cfgPath, old)
+	p, err := LoadProject(p.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Cfg.Ctx.BudgetTokens != 8000 {
+		t.Fatalf("hook.budget_tokens must not be read: %d", p.Cfg.Ctx.BudgetTokens)
+	}
+	w := hookWarning()
+	if w == nil || w.Severity != SevWarn || w.Line != p.OldHookLine() || w.Line == 0 {
+		t.Fatalf("warning = %+v", w)
+	}
+}
+
+func TestStatusNext(t *testing.T) {
+	p := knowledgeProject(t)
+	if _, err := p.NewChange("remind", false, "", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	c, _ := p.FindChange("remind")
+	write(t, filepath.Join(c.Dir, "tasks.md"), "## 1. Reminders\n- [x] 1.1 Storage\n- [ ] 1.2 Change the payment reminder to three days\n")
+	write(t, filepath.Join(c.Dir, "deltas/finance.md"), "## REMOVED Requirements\n### Requirement: Payment reminder\n")
+	c, _ = p.FindChange("remind")
+	status := func(onlyNext bool) string {
+		var out strings.Builder
+		if err := p.Status(&out, c, &keywordDecider{}, onlyNext); err != nil {
+			t.Fatal(err)
+		}
+		return out.String()
+	}
+	full := status(false)
+	for _, want := range []string{"1.2 Change the payment reminder", "DELTAS IN THIS CHANGE", "DECISIONS FOR THESE ZONES", "--- ", "ADR " + remindersADR, "zones: finance (0.90) — open with `lore show <zone>`"} {
+		if !strings.Contains(full, want) {
+			t.Errorf("full status misses %q:\n%s", want, full)
+		}
+	}
+	if strings.Contains(full, "=== zone") {
+		t.Errorf("status names zones, never prints them:\n%s", full)
+	}
+	next := status(true)
+	for _, want := range []string{"1.2 Change the payment reminder", "ADR " + remindersADR, "zones: finance"} {
+		if !strings.Contains(next, want) {
+			t.Errorf("--next misses %q:\n%s", want, next)
+		}
+	}
+	for _, not := range []string{"DELTAS IN THIS CHANGE", "DECISIONS FOR THESE ZONES", "--- ", "=== zone"} {
+		if strings.Contains(next, not) {
+			t.Errorf("--next prints %q:\n%s", not, next)
+		}
+	}
+	write(t, filepath.Join(c.Dir, "tasks.md"), "- [x] 1.1 Storage\n")
+	c, _ = p.FindChange("remind")
+	if out := status(true); !strings.Contains(out, "lore change archive remind") {
+		t.Fatalf("--next with all done:\n%s", out)
 	}
 }
 
@@ -245,47 +385,6 @@ func TestDeciderKeySources(t *testing.T) {
 	t.Setenv("LORE_OPENROUTER_API_KEY", "env")
 	if d, _ := p.NewDecider(); d.(*openRouter).key != "env" {
 		t.Fatal("the environment should win")
-	}
-}
-
-// An item first mentioned as a pointer is not repeated as a pointer, but its
-// content still comes when a later prompt scores it high.
-func TestHookPointerUpgradesToContent(t *testing.T) {
-	p := knowledgeProject(t)
-	score := 0.5
-	d := deciderFunc(func(state string, qs map[string]Question) map[string]float64 {
-		out := map[string]float64{}
-		for id, q := range qs {
-			switch {
-			case strings.Contains(q.Instructions, "«finance»"):
-				out[id] = 0.9
-			case strings.Contains(q.Instructions, "«finance › Payment reminder»"):
-				out[id] = score
-			default:
-				out[id] = 0.1
-			}
-		}
-		return out
-	})
-	run := func() string {
-		in, _ := json.Marshal(map[string]string{"prompt": "something about money and payments", "session_id": "s2", "cwd": p.Root})
-		var out bytes.Buffer
-		RunHook(bytes.NewReader(in), &out, func(*Project) (Decider, error) { return d, nil })
-		return out.String()
-	}
-	if out := run(); !strings.Contains(out, "maybe relevant: finance › Payment reminder") {
-		t.Fatalf("first prompt should mention the requirement as a pointer: %q", out)
-	}
-	if out := run(); out != "" {
-		t.Fatalf("pointer repeated in the same session: %q", out)
-	}
-	score = 0.9
-	out := run()
-	if !strings.Contains(out, "The system SHALL remind about a recurring payment") {
-		t.Fatalf("content not injected after the pointer: %q", out)
-	}
-	if out := run(); out != "" {
-		t.Fatalf("content injected twice: %q", out)
 	}
 }
 
