@@ -1,0 +1,1 @@
+Does {kind} «{name}» relate to this work — does the work implement it, rely on it, or have to respect it? {kind}: {text}

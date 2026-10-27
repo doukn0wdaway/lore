@@ -1,0 +1,1 @@
+Does this fact contradict the decision «{name}» — does it violate the decision or any of its rules? Decision: {text}
