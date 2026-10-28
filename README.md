@@ -1,10 +1,10 @@
 # lore
 
-Project knowledge for AI coding agents: **what** the system does, **why** it is built this way, and **what** is being changed right now — kept in the repo, delivered to the agent automatically, changed only through a reviewed gate.
+Project knowledge for AI coding agents: **what** the system does, **why** it is built this way, and **what** is being changed right now — kept in the repo, delivered to the agent on demand with one command, changed only through a reviewed gate.
 
-lore is a rethink of [OpenSpec](https://github.com/Fission-AI/OpenSpec): it keeps OpenSpec's requirement and delta format and adds first-class decisions (ADRs), automatic context selection by a decisions model, a code-first mode and bootstrap of existing projects.
+lore is a rethink of [OpenSpec](https://github.com/Fission-AI/OpenSpec): it keeps OpenSpec's requirement and delta format and adds first-class decisions (ADRs), context selection by a decisions model, a code-first mode and bootstrap of existing projects.
 
-Full design and the reasoning behind every choice (in Russian): [`design.md`](design.md).
+The current behaviour and the decisions behind it live in [`lore/`](lore/INDEX.md) (zones and ADRs). [`design.md`](design.md) (in Russian) is historical: the original design as of 2026-10-27 and its decision log, no longer updated.
 
 ## Why
 
@@ -12,7 +12,7 @@ Full design and the reasoning behind every choice (in Russian): [`design.md`](de
 - **Context is expensive.** Grepping and reading half the project on every task fills the context and multiplies the number of steps.
 - **Docs rot.** Specs written before the code describe the plan, not what was built.
 
-lore answers with three rules: every fact lives in one place; the "law" (zones and decisions) changes only through a gate where the owner sees the diff; context comes to the agent instead of the agent going after it.
+lore answers with three rules: every fact lives in one place; the "law" (zones and decisions) changes only through a gate where the owner sees the diff; the agent gets the knowledge that relates to its work with one command instead of grepping for it.
 
 ## How it works
 
@@ -30,7 +30,7 @@ lore/
 - **Zone** — an area of responsibility with its own rules (`notifications`, `finance`, `users`, `design-system`), not a folder. An action lives in the zone of the object it acts on; a reaction lives in the zone that reacts.
 - **ADR** — a decision with a non-obvious "why" that a future agent might want to "fix". `## Why` is required; the reason comes from the owner and is never invented.
 - **Change** — a feature in progress. **Spec-first:** proposal → owner's approval → deltas and tasks → code. **Code-first:** code in real time, then a change is created from the git diff. Both end at the same **gate**: reconcile with the code, check facts against decisions, merge deltas into zones, owner approves the diff, archive.
-- **Decisions model** — a small model that answers "does this relate / contradict?" with probabilities. On every prompt it picks the requirements and decisions that matter and injects them into the agent's context; at the gate it flags facts that may contradict accepted decisions.
+- **Decisions model** — a small model that answers "does this relate / contradict?" with probabilities. When the agent needs knowledge, `lore ctx` asks it which decisions and zones relate to the work; at the gate it flags facts that may contradict accepted decisions.
 
 ## Install
 
@@ -54,7 +54,7 @@ lore init
 
 - `lore.yaml` and the `lore/` skeleton;
 - a lore block in `AGENTS.md` (between `<!-- lore:begin -->` markers) and `@AGENTS.md` in `CLAUDE.md`;
-- `.claude/settings.json`: `lore` may run freely, edits of zones / ADRs / product / architecture ask the owner, the `UserPromptSubmit` hook;
+- `.claude/settings.json`: `lore` may run freely, edits of ADRs ask the owner (zones, product and architecture are approved at the gate); an old `lore ctx --hook` prompt hook is removed;
 - `.claude/skills/lore-*` symlinks to `lore/workflows/*`;
 - `lore/.env` and `lore/.local/` in `.gitignore`.
 
@@ -66,7 +66,7 @@ echo 'LORE_OPENROUTER_API_KEY=sk-or-...' >> ~/.config/lore/.env
 chmod 600 ~/.config/lore/.env
 ```
 
-Everything except the hook, `lore ctx`, `change check` and the model part of `change status` works without a key. Check the setup with `lore version` and `lore ctx "some task in this project"`.
+Everything except `lore ctx`, `change check` and the model part of `change status --next` works without a key. Check the setup with `lore version` and `lore ctx "some task in this project"`.
 
 **Existing project:** open Claude Code in it and run `/lore-bootstrap`. The agent derives product scenarios and a zone map from the code, writes the zones one by one, then interviews you about non-obvious decisions and records them as ADRs. You approve every step; progress survives between sessions.
 
@@ -102,13 +102,13 @@ What the owner does: approves proposals and ADR drafts, answers "why?" and "new 
 
 ### Everyday work
 
-Just talk to the agent. On every prompt the hook adds a `[lore]` block with the requirements and decisions that matter; you see it as hook context in Claude Code.
+Just talk to the agent. `INDEX.md` is always in its context; when you ask it to look something up, or it decides it needs more, it runs `lore ctx "<the work in its own words>"` and gets the related decisions and zones. Not your message verbatim: what matters is which of the project's knowledge relates to the work.
 
 **Planning a feature (spec-first).**
 
 1. `/lore-propose voice messages in Telegram` — the agent asks until it understands what and why, then writes `lore/changes/<name>/`: `proposal.md` (Why, What changes as one behavioural fact per bullet, Zones, Scenarios), `deltas/<zone>.md`, `tasks.md`, ADR drafts if a real decision is needed. It runs `lore change check` and asks you about every possible conflict with an accepted ADR.
 2. You approve the proposal and the drafts.
-3. `/lore-apply` — task by task; before each one the agent runs `lore change status` (next task + deltas + decisions + model-picked context). At a fork it stops and asks; your answer goes to `## Owner notes`.
+3. `/lore-apply` — task by task; at the start the agent runs `lore change status` (next task, deltas, decisions of the touched zones, chosen zones by name), and before each following task `lore change status --next` (only the next task and what the model picks for it). At a fork it stops and asks; your answer goes to `## Owner notes`.
 4. `/lore-archive` — the gate: deltas are reconciled with what the code really does, facts checked against ADRs, drafts settled, deltas merged into the zones, `product.md` updated. You see the diff of `lore/` and say yes; the agent runs `lore change archive --finish`.
 
 **Documenting what you already coded (code-first).** Code as usual, then `/lore-document`. The agent creates a change from the git diff (base = merge-base with `main_branch`; if you worked on that branch itself, it asks where the work started), writes the facts, checks them against decisions, asks which of your choices are worth an ADR, writes deltas and continues with `/lore-archive`.
@@ -151,7 +151,7 @@ Just talk to the agent. On every prompt the hook adds a `[lore]` block with the 
 
 - Accepted ADRs are binding. A contradiction is always your call: new decision (a new ADR supersedes the old one entirely) or a bug.
 - The "why" of a decision is never invented; unknown reasons are recorded as unknown.
-- Zones, ADRs, `product.md` and `architecture.md` change only at the gate or in a workflow you started; every edit of them asks your permission.
+- Zones, ADRs, `product.md` and `architecture.md` change only at the gate or in a workflow you started. Edits of ADRs ask your permission; the rest you approve as one diff at the gate.
 - ADR statuses change only through `lore adr accept`, after your yes.
 
 ### Keeping lore up to date
@@ -166,7 +166,8 @@ lore upgrade                     # in each project: workflows, prompts, new lore
 
 ### Troubleshooting
 
-- **No `[lore]` block:** the prompt is shorter than `hook.min_words` or starts with `/`; the key is missing; `hook.enabled` is not `true`; or nothing relevant was found. Every hook call, with its scores and errors, is in `lore/.local/log.jsonl`.
+- **`lore ctx` finds nothing or the wrong things:** check the key; look at the scores of the call in `lore/.local/log.jsonl` (every `ctx`, `status` and `check` call is there, with errors); thresholds are in `lore.yaml`.
+- **`lint` or `upgrade` mention a `hook:` block:** it is left over from the old prompt hook and no longer read — delete it from `lore.yaml`.
 - **`lore lint` fails on anchors in example files:** add them to `anchors_ignore`.
 - **`--finish` refuses:** it names the first missing, different or left-over line of each delta, or the lint errors elsewhere in the project — fix and run it again.
 - **The binary seems stale:** `nix profile upgrade lore` after every change to lore's source; `lore version` tells which one you run.
@@ -175,12 +176,12 @@ lore upgrade                     # in each project: workflows, prompts, new lore
 
 Configured in `lore.yaml`; default `perplexity/pplx-decider-v1.2` through OpenRouter's Decisions API.
 
-- **Prompt hook** (`lore ctx --hook`): two stages — which zones the prompt touches, then which requirements, sections and decisions of those zones (plus global decisions). High-confidence items are injected as content, medium ones as pointers, within a token budget. Short prompts and slash commands are skipped (skills fetch their own context). Within a session nothing is injected twice; an item first shown as a pointer can still come as content when a later prompt needs it. A timeout or a missing key never blocks the prompt. When the agent needs more, the protocol tells it to run `lore ctx "<what it needs>"`.
-- **`lore change status`** adds the knowledge relevant to the next task.
+- **`lore ctx "<text>"`** — the agent runs it when it needs knowledge, with its own description of the work or question. One selection scores every zone (its tldr with invariants, boundaries and contracts) and every accepted ADR. Output is two lists: decisions — ADRs above `include_content` as content, with no budget, and ADRs above `include_pointer` named as "maybe relevant"; zones — above the `zones` threshold, highest first, printed whole while they fit `ctx.budget_tokens`, the rest named with a `lore show` hint. Nothing reaches the agent's context unless it runs a command.
+- **`lore change status --next`** runs the same selection for the text of the next task; full `change status` names the chosen zones.
 - **`lore change check`** takes every fact under `## What changes` of a proposal and reports the zones it touches (and zones without a delta) and the accepted ADRs it may contradict. These are questions for the owner, not verdicts.
 - Every call is logged to `lore/.local/log.jsonl`.
 
-Measured live: `ctx` ~1–1.2 s, `change check` ~2 s for two facts; Russian prompts against English docs work.
+Russian texts against English docs work.
 
 **The key** is lore's own: `LORE_OPENROUTER_API_KEY` from the environment, else `lore/.env` of the project (gitignored), else `~/.config/lore/.env`. The project's own `.env` is never read — it belongs to the app. Putting the key itself into `lore.yaml` is refused by every command.
 
@@ -199,12 +200,11 @@ Measured live: `ctx` ~1–1.2 s, `change check` ~2 s for two facts; Russian prom
 | `lore adr list [--zone z] [--status s] [--json]` | list ADRs |
 | `lore change new <name> [--from-diff [--base ref]]` | start a change; `--from-diff` = code-first from the merge-base with the main branch |
 | `lore change list` | active changes with mode and progress |
-| `lore change status [name]` | next task, the change's deltas, decisions of the touched zones, model-picked context |
+| `lore change status [name] [--next]` | next task, the change's deltas, decisions of the touched zones, chosen zones by name; `--next`: only the next task and what the model picks for it |
 | `lore change check [name]` | facts vs zones and accepted ADRs |
 | `lore change archive [name]` | pre-merge checks (tasks done, deltas fit the current zones, drafts valid; warns when a MODIFIED drops a scenario) |
 | `lore change archive [name] --finish` | after merge and the owner's yes: verify every merged block equals its delta, require the whole project lint-clean, move ADR drafts, supersede, archive |
-| `lore ctx "<text>"` | model-picked knowledge for a text |
-| `lore ctx --hook` | Claude Code `UserPromptSubmit` hook (JSON on stdin) |
+| `lore ctx "<text>"` | decisions and zones related to a text (your own description of the work or question) |
 | `lore agents sync` | (re)link workflows into `.claude/skills/lore-*` |
 | `lore upgrade [--force]` | update workflows and prompts (local edits kept unless `--force`), add new `lore.yaml` keys, rewrite the `AGENTS.md` block, migrate old layouts |
 
@@ -223,17 +223,14 @@ decisions_api_key_env: LORE_OPENROUTER_API_KEY   # the NAME of the variable, not
 decisions_endpoint: https://openrouter.ai/api/alpha/decisions
 decisions_provider: [Perplexity]
 
-hook:
-  enabled: true
-  min_words: 4                   # shorter prompts are not matched
-  timeout_ms: 6000
-  budget_tokens: 2500            # how much content to inject per prompt
+ctx:
+  budget_tokens: 8000            # how much of whole zones `lore ctx` prints
 
 thresholds:
-  zones: 0.3                     # stage 1 — low, never lose a zone
-  include_content: 0.7           # inject the content
-  include_pointer: 0.4           # mention only
-  contradiction: 0.5             # flag at the gate
+  zones: 0.3                     # the zone is related — low, never lose a zone
+  include_content: 0.7           # show the ADR's content
+  include_pointer: 0.4           # name the ADR as maybe relevant
+  contradiction: 0.5             # ask the owner at the gate
 
 prompts:                         # question texts for the model, editable per project
   relates: lore/prompts/relates.txt
@@ -257,9 +254,9 @@ nix build path:.                 # → result/bin/lore (static)
 ```
 cmd/lore/                CLI: commands and flag parsing
 internal/lore/           project, markdown parsing, lint, index, show, adr, changes and deltas,
-                         decisions model client, selection, hook, install / upgrade
+                         decisions model client, selection, ctx, install / upgrade
 internal/assets/files/   embedded: lore.yaml, AGENTS.md block, templates, workflows, prompts
-design.md                the design and the decision log
+design.md                historical: the original design and decision log
 lore/                    lore documents itself: zones, ADRs, product, architecture
 ```
 
