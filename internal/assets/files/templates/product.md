@@ -10,9 +10,10 @@
 <!--
 One scenario per item: a route through zones, no rules (rules live in zones).
 Status: [live] — works now, [planned] — wanted.
+A zone that doesn't exist yet is marked with ? — only in a [planned] scenario.
 
 - [live] User sends a voice message → gets a text answer
   zones: transport, storage, ai-core
 - [planned] User sends a photo of a receipt → the expense lands in finance
-  zones: transport, storage, finance
+  zones: transport, storage, finance, receipts?
 -->

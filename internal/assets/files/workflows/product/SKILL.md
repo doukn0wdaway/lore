@@ -15,12 +15,12 @@ description: Maintain lore/product.md — add a wanted scenario as [planned] (a 
 ## Add a wanted scenario
 
 1. Phrase it from the user's point of view: trigger → visible outcome. One line.
-2. Pick the zones it goes through from `lore/INDEX.md`. A zone that doesn't exist yet → note it in the line (`zones: storage, finance, receipts?`) and tell the owner a new zone will be needed — don't create zones here (`/lore-zone`).
+2. Pick the zones it goes through from `lore/INDEX.md`. A zone that doesn't exist yet → mark it with `?` (`zones: storage, finance, receipts?`) and tell the owner a new zone will be needed — don't create zones here: their boundaries are defined in the proposal that builds them. `?` is allowed only in a `[planned]` scenario; lint errors on it anywhere else.
 3. Status `[planned]`. Order of planned items = priority; ask the owner where it goes.
 
 ## Mark as live
 
-Only when the behaviour really works in the code. `[planned]` → `[live]`; check the zone list still matches what was built.
+Only when the behaviour really works in the code. `[planned]` → `[live]`; check the zone list still matches what was built. A live scenario goes only through existing zones — no `?` left.
 
 ## A scenario changed or is no longer relevant
 

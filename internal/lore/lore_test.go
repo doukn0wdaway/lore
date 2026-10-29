@@ -353,6 +353,46 @@ d
 	}
 }
 
+func TestLintFutureZones(t *testing.T) {
+	p := newProject(t)
+	write(t, p.Path("zones/storage.md"), "---\nid: storage\ntldr: Files, OCR and whisper, dialogue history and facts.\n---\n# Storage\n\n## Purpose\nKeeps things.\n")
+	write(t, p.Path("product.md"), `# Product
+
+## Scenarios
+
+- [planned] User sends a receipt → the expense lands in finance
+  zones: storage, receipts?
+- [planned] User searches old files
+  zones: storage?
+- [live] User exports expenses
+  zones: storage, export?
+- User shares a file
+  zones: sharing?
+- [planned] User tags a file
+  zones: tags
+`)
+	issues, err := p.Lint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	errs := messages(issues, SevError)
+	for _, want := range []string{
+		`product.md:10: future zone "export?" in a scenario that is not [planned]`,
+		`product.md:12: future zone "sharing?" in a scenario that is not [planned]`,
+		`product.md:14: scenario refers to unknown zone "tags"`,
+	} {
+		if !strings.Contains(errs, want) {
+			t.Errorf("missing error %q in:\n%s", want, errs)
+		}
+	}
+	if strings.Contains(errs, "receipts") || strings.Contains(errs, "product.md:8") {
+		t.Errorf("future zone in a planned scenario reported as an error:\n%s", errs)
+	}
+	if warns := messages(issues, SevWarn); !strings.Contains(warns, `product.md:8: zone "storage" exists now — drop the ?`) {
+		t.Errorf("missing drop-the-? warning:\n%s", warns)
+	}
+}
+
 func TestLintAnchorsIgnore(t *testing.T) {
 	p := newProject(t)
 	for _, f := range []string{"design.md", "docs/a.md", "examples/x.go", "pkg/a/b_test.go", "main.go"} {

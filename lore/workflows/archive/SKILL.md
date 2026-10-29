@@ -58,7 +58,7 @@ Apply each `deltas/<zone>.md` to `lore/zones/<zone>.md` (no permission prompt he
 
 Then:
 
-- `lore/product.md` — apply `## Scenarios` of the proposal: `[planned]` → `[live]` (add if missing), rewrite changed scenarios in place, delete removed ones. product.md describes the present; history stays in the archived change and git. If the reason a scenario was dropped is non-obvious and an agent might propose it again, that is an ADR ("we don't do X because …") — ask the owner;
+- `lore/product.md` — apply `## Scenarios` of the proposal: `[planned]` → `[live]` (add if missing; a live scenario keeps no future zone `<id>?` — the zone this change created, or the zones it really passes through), rewrite changed scenarios in place, delete removed ones. product.md describes the present; history stays in the archived change and git. If the reason a scenario was dropped is non-obvious and an agent might propose it again, that is an ADR ("we don't do X because …") — ask the owner;
 - `lore/architecture.md`: update if zones or dependencies changed;
 - if a superseded ADR has code anchors (`grep -rn "ADR <old-id>"`), repoint them to the new id.
 

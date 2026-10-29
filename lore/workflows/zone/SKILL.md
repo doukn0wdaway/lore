@@ -49,7 +49,7 @@ Only frontmatter and `## Purpose` are required; add free sections when the zone 
 
 1. Check the zone criterion and that no existing zone already owns this (`lore/INDEX.md`). Propose `id`, `tldr`, boundaries → owner approves.
 2. Read the code, write the doc.
-3. Update `lore/architecture.md` (zones and dependencies) and any `product.md` scenario that goes through the new zone.
+3. Update `lore/architecture.md` (zones and dependencies) and any `product.md` scenario that goes through the new zone; where it is named as a future zone (`<id>?`), drop the `?`.
 
 ## Update
 

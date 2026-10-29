@@ -337,8 +337,13 @@ func (l *linter) index(zones []*Zone) {
 	}
 }
 
-var scenarioZonesRe = regexp.MustCompile(`^\s*zones:\s*(.+)$`)
+var (
+	scenarioRe      = regexp.MustCompile(`^\s*[-*]\s+(?:\[([a-z]+)\])?`)
+	scenarioZonesRe = regexp.MustCompile(`^\s*zones:\s*(.+)$`)
+)
 
+// product checks the zones: line of each scenario. A zone ending in `?` is a
+// future zone, allowed only in a [planned] scenario while it doesn't exist.
 func (l *linter) product(zones []*Zone) {
 	path := l.p.Path("product.md")
 	b, err := os.ReadFile(path)
@@ -350,15 +355,28 @@ func (l *linter) product(zones []*Zone) {
 	src := commentRe.ReplaceAllStringFunc(string(b), func(c string) string {
 		return strings.Repeat("\n", strings.Count(c, "\n"))
 	})
+	rel := l.p.Rel(path)
+	status := ""
 	for i, row := range strings.Split(src, "\n") {
+		if m := scenarioRe.FindStringSubmatch(row); m != nil {
+			status = m[1]
+			continue
+		}
 		m := scenarioZonesRe.FindStringSubmatch(row)
 		if m == nil {
 			continue
 		}
 		for _, z := range strings.Split(m[1], ",") {
 			z = strings.TrimSpace(z)
-			if z != "" && FindZone(zones, z) == nil {
-				l.errf(l.p.Rel(path), i+1, "scenario refers to unknown zone %q", z)
+			id, future := strings.CutSuffix(z, "?")
+			switch {
+			case id == "":
+			case future && status != "planned":
+				l.errf(rel, i+1, "future zone %q in a scenario that is not [planned] — a live scenario goes only through existing zones", z)
+			case future && FindZone(zones, id) != nil:
+				l.warnf(rel, i+1, "zone %q exists now — drop the ?", id)
+			case !future && FindZone(zones, id) == nil:
+				l.errf(rel, i+1, "scenario refers to unknown zone %q", z)
 			}
 		}
 	}

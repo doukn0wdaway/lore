@@ -79,6 +79,10 @@ Work done without a change SHALL be documented with `/lore-document`: a change f
 - **WHEN** the code differs from the deltas and `## Owner notes` doesn't explain it
 - **THEN** the agent asks the owner whether it is intended
 
+#### Scenario: Planned scenario with a future zone goes live
+- **WHEN** a `[planned]` scenario naming `receipts?` becomes `[live]` at archive
+- **THEN** its `zones:` line is left without `?`: the zone the change created, or the zones the scenario really passes through
+
 ### Requirement: Bootstrap
 `/lore-bootstrap` SHALL document an existing project in six gated steps — product, zone map, architecture, zones one at a time, decision interview, code anchors — keeping progress in `lore/.local/bootstrap.json` so it resumes in a later session.
 
@@ -100,6 +104,14 @@ Zones and `product.md` SHALL change outside a change only through `/lore-zone` a
 #### Scenario: Update reverses a decision
 - **WHEN** a zone update would contradict an ADR
 - **THEN** the agent stops and goes through `/lore-adr` first
+
+#### Scenario: Wanted scenario needs a zone that doesn't exist
+- **WHEN** `/lore-product` adds a `[planned]` scenario that goes through a zone not in the index
+- **THEN** the zone is written with `?` (`receipts?`) and the owner is told a new zone will be needed; no zone is created — its boundaries are defined later, in the proposal that builds it
+
+#### Scenario: Future zone is created
+- **WHEN** `/lore-zone` creates a zone that `product.md` names as `receipts?`
+- **THEN** the `?` is dropped in every scenario that names it
 
 ### Requirement: Explore without building
 `/lore-explore` SHALL ground the discussion in lore (`lore ctx` for the topic, `lore show` when a whole zone is needed, `product.md`, active changes), surface collisions with decisions, and never write code or lore docs; at the end it only offers the next step.
