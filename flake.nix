@@ -20,7 +20,17 @@
       });
 
       devShells = forAll (pkgs: {
-        default = pkgs.mkShell { packages = [ pkgs.go pkgs.gopls ]; };
+        default = pkgs.mkShell {
+          packages = [
+            pkgs.go
+            pkgs.gopls
+            # lines of code in tracked files, tests excluded; a command, not an
+            # alias, because direnv exports only environment variables
+            (pkgs.writeShellScriptBin "cloc-src" ''
+              exec ${pkgs.cloc}/bin/cloc --vcs=git --not-match-f='_test\.go$' "$@"
+            '')
+          ];
+        };
       });
     };
 }

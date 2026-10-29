@@ -2,3 +2,4 @@ bin/
 result
 lore/.env
 lore/.local/
+.direnv/
